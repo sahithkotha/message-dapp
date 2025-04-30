@@ -1,139 +1,256 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Web3 from "web3";
 import "./App.css";
+import MessageContract from './contracts/Message.json';
 
 function App() {
   // React hooks
   const [mmStatus, setMmStatus] = useState("Metamask status");
-  const [address, setAddress] = useState("Address:");
-  const [displayMessage, setDisplayMessage] = useState("");
+  const [address, setAddress] = useState("");
+  const [messages, setMessages] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [isConnected, setIsConnected] = useState(false);
+  const [contract, setContract] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
 
-  // Contract ABI (Application Binary Interface) is a json file that interacts with smart contracts.
-  // It's a bridge between front-end and EVM.
-  const ABI = [
-    {
-      inputs: [],
-      name: "read",
-      outputs: [
-        {
-          internalType: "string",
-          name: "",
-          type: "string",
-        },
-      ],
-      stateMutability: "view",
-      type: "function",
-      constant: true,
-    },
-    {
-      inputs: [
-        {
-          internalType: "string",
-          name: "newMessage",
-          type: "string",
-        },
-      ],
-      name: "write",
-      outputs: [],
-      stateMutability: "nonpayable",
-      type: "function",
-    },
-  ];
+  useEffect(() => {
+    checkConnection();
+    initializeContract();
+  }, []);
 
-  //Contract Address refers to the address where the contract is deployed on Ethereum blockchain.
-  const contractAddress = "0x285594f491fDb7a204EBBB26bC095e69F4BA6914";
+  async function initializeContract() {
+    try {
+      const web3 = new Web3(window.ethereum);
+      const networkId = await web3.eth.net.getId();
+      const deployedNetwork = MessageContract.networks[networkId];
+      
+      if (!deployedNetwork) {
+        throw new Error("Please make sure you are connected to the correct network (Ganache)");
+      }
 
-  const web3 = new Web3(window.ethereum);
-  // Instantiate smart contract instance
-  const Message = new web3.eth.Contract(ABI, contractAddress);
-  Message.setProvider(window.ethereum);
+      const instance = new web3.eth.Contract(
+        MessageContract.abi,
+        deployedNetwork.address
+      );
+      
+      setContract(instance);
+    } catch (error) {
+      console.error("Error initializing contract:", error);
+      setError("Failed to initialize contract. Please make sure you are connected to Ganache network.");
+    }
+  }
+
+  async function checkConnection() {
+    if (window.ethereum) {
+      try {
+        const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+        if (accounts.length > 0) {
+          setAddress(accounts[0]);
+          setIsConnected(true);
+          setMmStatus("✅ Connected to Metamask");
+        }
+      } catch (error) {
+        console.error("Error checking connection:", error);
+      }
+    }
+  }
 
   // Connect to Metamask wallet
   async function connectWallet() {
-    // Check Metamask status
+    setError("");
     if (window.ethereum) {
-      setMmStatus("✅ Metamask detected! Make sure you're on the rinkeby network.");
+      setMmStatus("✅ Metamask detected! Connecting...");
       try {
-        // Metamask popup will appear to connect the account
         const accounts = await window.ethereum.request({
           method: "eth_requestAccounts",
         });
-        // Get address of the account
         setAddress(accounts[0]);
+        setIsConnected(true);
+        setMmStatus("✅ Connected to Metamask");
+        
+        // Initialize contract after connecting
+        await initializeContract();
       } catch (error) {
-        console.log("Error: ", error);
+        setError("Failed to connect: " + error.message);
+        console.error("Error: ", error);
       }
     } else {
       setMmStatus("⚠️ No wallet detected! Please install Metamask.");
     }
   }
 
-  // Read message from smart contract
+  // Format timestamp to readable date
+  function formatTimestamp(timestamp) {
+    return new Date(timestamp * 1000).toLocaleString();
+  }
+
+  // Format address to shorter version
+  function formatAddress(addr) {
+    return `${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}`;
+  }
+
+  // Read messages from smart contract
   async function receive() {
-    // Display message
-    var displayMessage = await Message.methods.read().call();
-    setDisplayMessage(displayMessage);
+    if (!contract) {
+      setError("Contract not initialized. Please make sure you are connected to Ganache network.");
+      return;
+    }
+
+    setIsLoading(true);
+    setError("");
+    try {
+      const allMessages = await contract.methods.read().call();
+      setMessages(allMessages);
+    } catch (error) {
+      setError("Failed to receive messages: " + error.message);
+      console.error("Error receiving messages:", error);
+    }
+    setIsLoading(false);
   }
 
   // Write message to smart contract
   async function send() {
-    // Get input value of message
-    var getMessage = document.getElementById("message").value;
+    if (!contract) {
+      setError("Contract not initialized. Please make sure you are connected to Ganache network.");
+      return;
+    }
 
-    // Send message to smart contract
-    web3.eth.getAccounts().then(function (accounts) {
-      Message.methods.write(getMessage).send({ from: accounts[0] });
-    });
+    setIsLoading(true);
+    setError("");
+    try {
+      const getMessage = document.getElementById("message").value;
+      if (!getMessage) {
+        throw new Error("Please enter a message");
+      }
+      
+      await contract.methods.write(getMessage).send({ from: address });
+      document.getElementById("message").value = "";
+      // Automatically receive the new messages
+      await receive();
+    } catch (error) {
+      setError("Failed to send message: " + error.message);
+      console.error("Error sending message:", error);
+    }
+    setIsLoading(false);
   }
 
+  // Filter messages based on search term
+  const filteredMessages = messages.filter(msg => 
+    msg.content.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   return (
-    <div>
-      {/* Metamask status */}
-      <div className="text-center">{mmStatus}</div>
-      <hr />
-      <h1 className="text-center text-4xl font-bold mt-6">Message Dapp 👋</h1>
-      {/* Connect to Metamask */}
-      <center>
-        <button
-          className="text-center items-center border-2 border-blue-500 rounded-md p-1 mt-6 mb-6"
-          onClick={connectWallet}
-        >
-          Connect wallet
-        </button>
-      </center>
-      {/* Show account address */}
-      <div className="text-center text-sm">{address}</div>
-      {/* Send message */}
-      <center className="mt-12">
-        <input
-          type={"text"}
-          placeholder={"Enter message"}
-          id="message"
-          className="text-left border-2 border-gray-300 rounded-sm p-1"
-        />
-        <button
-          className="text-center border-2 border-gray-500 rounded ml-2 p-1 w-16"
-          onClick={send}
-        >
-          Send
-        </button>
-        {/* Receive message */}
-        <button
-          className="text-center border-2 border-gray-500 rounded ml-2 p-1 w-18"
-          onClick={receive}
-        >
-          Receive
-        </button>
-      </center>
-      <p className="text-center text-xs mt-6">
-        <i>
-          Please wait till the transaction is completed, then click on the Receive
-          button to display your message.
-        </i>
-      </p>
-      {/* Display message */}
-      <div className="text-center text-3xl mt-10">
-        <b>{displayMessage}</b>
+    <div className="min-h-screen bg-gradient-to-b from-gray-100 to-gray-200 p-8">
+      {/* Status Bar */}
+      <div className="max-w-2xl mx-auto bg-white rounded-lg shadow-md p-6 mb-8">
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-gray-600">{mmStatus}</div>
+          <button
+            className={`px-4 py-2 rounded-lg transition-all ${
+              isConnected
+                ? "bg-green-100 text-green-700"
+                : "bg-blue-500 hover:bg-blue-600 text-white"
+            }`}
+            onClick={connectWallet}
+            disabled={isConnected}
+          >
+            {isConnected ? "Connected" : "Connect Wallet"}
+          </button>
+        </div>
+        {address && (
+          <div className="mt-2 text-sm text-gray-500">
+            Connected Address: {formatAddress(address)}
+          </div>
+        )}
+      </div>
+
+      {/* Main Content */}
+      <div className="max-w-2xl mx-auto bg-white rounded-lg shadow-md p-8">
+        <h1 className="text-4xl font-bold text-center text-gray-800 mb-8">
+          Message Dapp <span role="img" aria-label="wave">👋</span>
+        </h1>
+
+        {/* Input Section */}
+        <div className="space-y-4">
+          <input
+            type="text"
+            placeholder="Enter your message"
+            id="message"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+          <div className="flex space-x-4 justify-center">
+            <button
+              className={`px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors ${
+                isLoading ? "opacity-50 cursor-not-allowed" : ""
+              }`}
+              onClick={send}
+              disabled={isLoading || !isConnected}
+            >
+              {isLoading ? "Sending..." : "Send"}
+            </button>
+            <button
+              className={`px-6 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors ${
+                isLoading ? "opacity-50 cursor-not-allowed" : ""
+              }`}
+              onClick={receive}
+              disabled={isLoading || !isConnected}
+            >
+              {isLoading ? "Loading..." : "Receive"}
+            </button>
+          </div>
+        </div>
+
+        {/* Search Bar */}
+        <div className="mt-8">
+          <input
+            type="text"
+            placeholder="Search messages..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+        </div>
+
+        {/* Error Display */}
+        {error && (
+          <div className="mt-4 p-4 bg-red-100 text-red-700 rounded-lg">
+            {error}
+          </div>
+        )}
+
+        {/* Messages Display */}
+        {filteredMessages.length > 0 ? (
+          <div className="mt-8">
+            <h2 className="text-xl font-semibold mb-4">Messages:</h2>
+            <div className="space-y-4">
+              {filteredMessages.map((msg, index) => (
+                <div
+                  key={index}
+                  className="p-4 bg-gray-50 rounded-lg shadow-sm hover:shadow-md transition-shadow"
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="text-sm text-gray-500">
+                      From: {formatAddress(msg.sender)}
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      {formatTimestamp(msg.timestamp)}
+                    </span>
+                  </div>
+                  <p className="text-gray-800">{msg.content}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : messages.length > 0 ? (
+          <div className="mt-8 text-center text-gray-500">
+            No messages found matching your search.
+          </div>
+        ) : (
+          <div className="mt-8 text-center text-gray-500">
+            No messages yet. Be the first to send one!
+          </div>
+        )}
       </div>
     </div>
   );
