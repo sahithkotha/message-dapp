@@ -1,3 +1,75 @@
+# Message DApp
+
+A decentralized messaging application built with Ethereum, Truffle, and React.
+
+## Features
+
+- Send and receive messages on the Ethereum blockchain
+- Real-time message updates
+- MetaMask integration
+- Clean and modern UI
+
+## Tech Stack
+
+- Solidity (Smart Contracts)
+- Truffle Framework
+- React.js
+- Web3.js
+- MetaMask
+- Ganache (Local blockchain)
+
+## Setup Instructions
+
+1. Clone the repository:
+```bash
+git clone https://github.com/sahithkotha/message-dapp.git
+cd message-dapp
+```
+
+2. Install dependencies:
+```bash
+# Install Truffle dependencies
+cd truffle
+npm install
+
+# Install React client dependencies
+cd ../client
+npm install
+```
+
+3. Start Ganache:
+- Open Ganache GUI
+- Create a new workspace
+- Configure network (PORT: 8545, NETWORK ID: 1337)
+
+4. Deploy smart contracts:
+```bash
+cd truffle
+truffle migrate --reset
+```
+
+5. Start the React client:
+```bash
+cd client
+npm start
+```
+
+6. Configure MetaMask:
+- Network Name: Localhost 8545
+- RPC URL: http://127.0.0.1:8545
+- Chain ID: 1337
+- Currency Symbol: ETH
+
+## Usage
+
+1. Connect your MetaMask wallet
+2. Send messages using the input field
+3. View messages in real-time
+
+## License
+
+MIT
+
 <h1 align="center">Message Dapp</h1>
 
 > A simple full-stack dapp that writes messages to the Ethereum blockchain. You will learn the whole process of developing a decentralized application.
